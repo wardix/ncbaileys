@@ -19,7 +19,10 @@ import {
   MYSQL_DATABASE,
   DEFAULT_SESSION,
   LOG_DIR,
+  NATS_SERVERS,
+  NATS_TOKEN
 } from './config'
+import { connect, StringCodec } from 'nats'
 
 const session = DEFAULT_SESSION
 const sock: any = {
@@ -86,6 +89,14 @@ async function startSock(session: string) {
     const timestamp = new Date().getTime()
     const messageFilePath = join(LOG_DIR, `messages-${timestamp}-${uuid}.json`)
     await writeFile(messageFilePath, Buffer.from(JSON.stringify(m, null, 2)))
+    const nc = await connect({
+      servers: NATS_SERVERS,
+      token: NATS_TOKEN
+    })
+    const js = nc.jetstream()
+    const sc = StringCodec()
+    await js.publish('events.ncbaileys.messages_received', sc.encode(JSON.stringify(m)))
+    await nc.close()
   })
 }
 
