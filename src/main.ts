@@ -130,8 +130,11 @@ app.post('/:phoneId/messages', async (context) => {
   const headerFilePath = join(LOG_DIR, `${phoneId}-header-${timestamp}-${uuid}.txt`)
   const bodyFilePath = join(LOG_DIR, `${phoneId}-request-body-${timestamp}-${uuid}.txt`)
 
-  const headers = JSON.stringify(context.req.raw.headers, null, 2)
-  await writeFile(headerFilePath, headers)
+  const headers: any = {}
+  for (const [header, value] of context.req.raw.headers) {
+    headers[header] = value
+  }
+  await writeFile(headerFilePath, Buffer.from(JSON.stringify(headers, null, 2)))
 
   const bodyBuffer = await context.req.arrayBuffer()
   await writeFile(bodyFilePath, Buffer.from(bodyBuffer))
