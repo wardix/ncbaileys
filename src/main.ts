@@ -103,6 +103,7 @@ async function startSock(session: string) {
 const app = new Hono()
 app.use(logger())
 app.get('/', (c) => c.json({ message: 'OK' }))
+
 app.post('/delivery', async (context) => {
   const uuid = uuidv4()
   const timestamp = new Date().getTime()
@@ -119,6 +120,23 @@ app.post('/delivery', async (context) => {
   const sent = await sock[session].sendMessage(to, data, options)
   await writeFile(deliveryFilePath, Buffer.from(JSON.stringify(sent, null, 2)))
   return context.json(sent)
+})
+
+app.post('/:phoneId/messages', async (context) => {
+  const uuid = uuidv4()
+  const timestamp = new Date().getTime()
+  const phoneId = context.req.param('phoneId')
+
+  const headerFilePath = join(LOG_DIR, `${phoneId}-header-${timestamp}-${uuid}.txt`)
+  const bodyFilePath = join(LOG_DIR, `${phoneId}-request-body-${timestamp}-${uuid}.txt`)
+
+  const headers = JSON.stringify(context.req.raw.headers, null, 2)
+  await writeFile(headerFilePath, headers)
+
+  const bodyBuffer = await context.req.arrayBuffer()
+  await writeFile(bodyFilePath, Buffer.from(bodyBuffer))
+
+  return context.json({ message: 'OK' })
 })
 
 startSock(session).catch((err) => console.log('Unexpected error:', err))
