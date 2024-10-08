@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { logger } from 'hono/logger'
+import { jwt } from 'hono/jwt'
 import {
   fetchLatestBaileysVersion,
   makeWASocket,
@@ -20,7 +21,8 @@ import {
   DEFAULT_SESSION,
   LOG_DIR,
   NATS_SERVERS,
-  NATS_TOKEN
+  NATS_TOKEN,
+  JWT_SECRET,
 } from './config'
 import { connect, StringCodec } from 'nats'
 
@@ -91,23 +93,38 @@ async function startSock(session: string) {
     await writeFile(messageFilePath, Buffer.from(JSON.stringify(m, null, 2)))
     const nc = await connect({
       servers: NATS_SERVERS,
-      token: NATS_TOKEN
+      token: NATS_TOKEN,
     })
     const js = nc.jetstream()
     const sc = StringCodec()
-    await js.publish('events.ncbaileys.messages_received', sc.encode(JSON.stringify(m)))
+    await js.publish(
+      'events.ncbaileys.messages_received',
+      sc.encode(JSON.stringify(m)),
+    )
     await nc.close()
   })
 }
 
 const app = new Hono()
+
 app.use(logger())
+
+app.use(
+  '/*/messages',
+  jwt({
+    secret: JWT_SECRET,
+  }),
+)
+
 app.get('/', (c) => c.json({ message: 'OK' }))
 
 app.post('/delivery', async (context) => {
   const uuid = uuidv4()
   const timestamp = new Date().getTime()
   const deliveryFilePath = join(LOG_DIR, `delivery-${timestamp}-${uuid}.json`)
+  if (!sockReady[session]) {
+    return context.json({ message: 'socket is not ready' }, 500)
+  }
   const { to, data, options } = await context.req.json()
   if (!options) {
     const sent = await sock[session].sendMessage(to, data)
@@ -127,8 +144,14 @@ app.post('/:phoneId/messages', async (context) => {
   const timestamp = new Date().getTime()
   const phoneId = context.req.param('phoneId')
 
-  const headerFilePath = join(LOG_DIR, `${phoneId}-header-${timestamp}-${uuid}.txt`)
-  const bodyFilePath = join(LOG_DIR, `${phoneId}-request-body-${timestamp}-${uuid}.txt`)
+  const headerFilePath = join(
+    LOG_DIR,
+    `${phoneId}-header-${timestamp}-${uuid}.txt`,
+  )
+  const bodyFilePath = join(
+    LOG_DIR,
+    `${phoneId}-request-body-${timestamp}-${uuid}.txt`,
+  )
 
   const headers: any = {}
   for (const [header, value] of context.req.raw.headers) {
@@ -139,6 +162,19 @@ app.post('/:phoneId/messages', async (context) => {
   const bodyBuffer = await context.req.arrayBuffer()
   await writeFile(bodyFilePath, Buffer.from(bodyBuffer))
 
+  if (!sockReady[session]) {
+    return context.json({ message: 'socket is not ready' }, 500)
+  }
+
+  const payload = await context.req.json()
+  if (payload.type !== 'text') {
+    return context.json({ message: 'unable to proceed' }, 402)
+  }
+  const sent = await sock[session].sendMessage(`${payload.to}@s.whatsapp.net`, {
+    text: payload.text.body,
+  })
+
+  console.log(sent)
   return context.json({ message: 'OK' })
 })
 
