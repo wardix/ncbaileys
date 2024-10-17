@@ -23,6 +23,7 @@ import {
   NATS_SERVERS,
   NATS_TOKEN,
   JWT_SECRET,
+  SEND_RESPONSE_TEMPLATE,
 } from './config'
 import { connect, StringCodec } from 'nats'
 
@@ -174,8 +175,14 @@ app.post('/:phoneId/messages', async (context) => {
     text: payload.text.body,
   })
 
+  const response = JSON.parse(SEND_RESPONSE_TEMPLATE)
+  response.contacts[0].input = payload.to
+  response.contacts[0].wa_id = payload.to
+  response.messages[0].id = sent.key.id
+
   console.log(sent)
-  return context.json({ message: 'OK' })
+  console.log(response)
+  return context.json(response)
 })
 
 startSock(session).catch((err) => console.log('Unexpected error:', err))
