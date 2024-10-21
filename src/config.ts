@@ -17,5 +17,8 @@ export const SEND_RESPONSE_TEMPLATE = process.env.SEND_RESPONSE_TEMPLATE || '{}'
 export const META_UPLOAD_MEDIA_URL =
   process.env.META_UPLOAD_MEDIA_URL ||
   'https://graph.facebook.com/v21.0/123456789/media'
-export const META_UPLOAD_MEDIA_TOKEN =
-  process.env.META_UPLOAD_MEDIA_TOKEN || 'abcdefghijklmnopqrstuvwxyz01234568790'
+export const META_MEDIA_TOKEN =
+  process.env.META_MEDIA_TOKEN || 'abcdefghijklmnopqrstuvwxyz01234568790'
+export const META_MEDIA_BASE_URL =
+  process.env.META_MEDIA_BASE_URL ||
+  'https://graph.facebook.com/v21.0/123456789'

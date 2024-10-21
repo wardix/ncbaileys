@@ -29,7 +29,8 @@ import {
   JWT_SECRET,
   SEND_RESPONSE_TEMPLATE,
   META_UPLOAD_MEDIA_URL,
-  META_UPLOAD_MEDIA_TOKEN,
+  META_MEDIA_TOKEN,
+  META_MEDIA_BASE_URL,
 } from './config'
 import { connect, StringCodec } from 'nats'
 
@@ -116,7 +117,7 @@ async function startSock(session: string) {
       formData.append('messaging_product', 'whatsapp')
       const response = await axios.post(META_UPLOAD_MEDIA_URL, formData, {
         headers: {
-          Authorization: `Bearer ${META_UPLOAD_MEDIA_TOKEN}`,
+          Authorization: `Bearer ${META_MEDIA_TOKEN}`,
           ...formData.getHeaders(),
         },
       })
@@ -149,7 +150,29 @@ app.use(
   }),
 )
 
+app.use(
+  '/*',
+  jwt({
+    secret: JWT_SECRET,
+  }),
+)
+
 app.get('/', (c) => c.json({ message: 'OK' }))
+
+app.get('/:mediaId', async (context) => {
+  const mediaId = context.req.param('mediaId')
+  try {
+    const response = await axios.get(`${META_MEDIA_BASE_URL}/${mediaId}`, {
+      headers: {
+        Authorization: `Bearer ${META_MEDIA_TOKEN}`,
+      },
+    })
+    return context.json(response.data)
+  } catch (error) {
+    console.log('Error fetching media: ', error)
+    return context.json({ message: 'Failed to fetch media' }, 500)
+  }
+})
 
 app.post('/:phoneId/messages', async (context) => {
   const uuid = uuidv4()
