@@ -14,3 +14,8 @@ export const NATS_SERVERS = process.env.NATS_SERVERS || 'nats://localhost:4222'
 export const NATS_TOKEN = process.env.NATS_TOKEN || ''
 export const JWT_SECRET = process.env.JWT_SECRET || ''
 export const SEND_RESPONSE_TEMPLATE = process.env.SEND_RESPONSE_TEMPLATE || '{}'
+export const META_UPLOAD_MEDIA_URL =
+  process.env.META_UPLOAD_MEDIA_URL ||
+  'https://graph.facebook.com/v21.0/123456789/media'
+export const META_UPLOAD_MEDIA_TOKEN =
+  process.env.META_UPLOAD_MEDIA_TOKEN || 'abcdefghijklmnopqrstuvwxyz01234568790'

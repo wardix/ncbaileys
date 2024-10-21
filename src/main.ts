@@ -5,12 +5,16 @@ import { jwt } from 'hono/jwt'
 import {
   fetchLatestBaileysVersion,
   makeWASocket,
+  downloadMediaMessage,
 } from '@whiskeysockets/baileys'
 import * as Boom from '@hapi/boom'
 import useMySQLAuthState from 'mysql-baileys'
 import { v4 as uuidv4 } from 'uuid'
 import { writeFile } from 'fs/promises'
 import { join } from 'path'
+import axios from 'axios'
+import FormData from 'form-data'
+
 import {
   PORT,
   MYSQL_HOST,
@@ -24,6 +28,8 @@ import {
   NATS_TOKEN,
   JWT_SECRET,
   SEND_RESPONSE_TEMPLATE,
+  META_UPLOAD_MEDIA_URL,
+  META_UPLOAD_MEDIA_TOKEN,
 } from './config'
 import { connect, StringCodec } from 'nats'
 
@@ -92,6 +98,32 @@ async function startSock(session: string) {
     const timestamp = new Date().getTime()
     const messageFilePath = join(LOG_DIR, `messages-${timestamp}-${uuid}.json`)
     await writeFile(messageFilePath, Buffer.from(JSON.stringify(m, null, 2)))
+    const publishedMessage = { ...m }
+    if (!m.messages[0].message) {
+      return
+    }
+    if ('imageMessage' in m.messages[0].message) {
+      const buffer = await downloadMediaMessage(
+        m.messages[0].message,
+        'buffer',
+        {},
+      )
+      const formData = new FormData()
+      formData.append('file', buffer, {
+        contentType: m.messages[0].message.imageMessage.mimetype,
+      })
+      formData.append('type', m.messages[0].message.imageMessage.mimetype)
+      formData.append('messaging_product', 'whatsapp')
+      const response = await axios.post(META_UPLOAD_MEDIA_URL, formData, {
+        headers: {
+          Authorization: `Bearer ${META_UPLOAD_MEDIA_TOKEN}`,
+          ...formData.getHeaders(),
+        },
+      })
+      console.log(response.data)
+      publishedMessage.messages[0].message.imageMessage.id = response.data.id
+    }
+
     const nc = await connect({
       servers: NATS_SERVERS,
       token: NATS_TOKEN,
@@ -100,7 +132,7 @@ async function startSock(session: string) {
     const sc = StringCodec()
     await js.publish(
       'events.ncbaileys.messages_received',
-      sc.encode(JSON.stringify(m)),
+      sc.encode(JSON.stringify(publishedMessage)),
     )
     await nc.close()
   })
