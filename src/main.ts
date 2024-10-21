@@ -151,27 +151,6 @@ app.use(
 
 app.get('/', (c) => c.json({ message: 'OK' }))
 
-app.post('/delivery', async (context) => {
-  const uuid = uuidv4()
-  const timestamp = new Date().getTime()
-  const deliveryFilePath = join(LOG_DIR, `delivery-${timestamp}-${uuid}.json`)
-  if (!sockReady[session]) {
-    return context.json({ message: 'socket is not ready' }, 500)
-  }
-  const { to, data, options } = await context.req.json()
-  if (!options) {
-    const sent = await sock[session].sendMessage(to, data)
-    await writeFile(
-      deliveryFilePath,
-      Buffer.from(JSON.stringify(sent, null, 2)),
-    )
-    return context.json(sent)
-  }
-  const sent = await sock[session].sendMessage(to, data, options)
-  await writeFile(deliveryFilePath, Buffer.from(JSON.stringify(sent, null, 2)))
-  return context.json(sent)
-})
-
 app.post('/:phoneId/messages', async (context) => {
   const uuid = uuidv4()
   const timestamp = new Date().getTime()
