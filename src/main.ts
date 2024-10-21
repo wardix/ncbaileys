@@ -103,16 +103,18 @@ async function startSock(session: string) {
     if (!m.messages[0].message) {
       return
     }
-    if ('imageMessage' in m.messages[0].message) {
+    if (m.messages[0].message.imageMessage) {
       const buffer = await downloadMediaMessage(
-        m.messages[0].message,
+        m.messages[0],
         'buffer',
         {},
       )
       const formData = new FormData()
       formData.append('file', buffer, {
+	filename: 'imagefile',
         contentType: m.messages[0].message.imageMessage.mimetype,
       })
+
       formData.append('type', m.messages[0].message.imageMessage.mimetype)
       formData.append('messaging_product', 'whatsapp')
       const response = await axios.post(META_UPLOAD_MEDIA_URL, formData, {
