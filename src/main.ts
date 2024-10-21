@@ -174,6 +174,26 @@ app.get('/:mediaId', async (context) => {
   }
 })
 
+app.post('/:phoneId/media', async (context) => {
+  const formData = new FormData()
+  const body = await context.req.parseBody()
+  for (const [key, value] of Object.entries(body)) {
+    formData.append(key, value)
+  }
+  try {
+    const response = await axios.post(`${META_UPLOAD_MEDIA_URL}`, formData, {
+      headers: {
+        Authorization: `Bearer ${META_MEDIA_TOKEN}`,
+        ...formData.getHeaders(),
+      },
+    })
+    return context.json(response.data)
+  } catch (error) {
+    console.log('Error uploading media: ', error)
+    return context.json({ message: 'Failed to upload media' }, 500)
+  }
+})
+
 app.post('/:phoneId/messages', async (context) => {
   const uuid = uuidv4()
   const timestamp = new Date().getTime()
