@@ -99,7 +99,7 @@ async function startSock(session: string) {
     const timestamp = new Date().getTime()
     const messageFilePath = join(LOG_DIR, `messages-${timestamp}-${uuid}.json`)
     await writeFile(messageFilePath, Buffer.from(JSON.stringify(m, null, 2)))
-    const publishedMessage = { ...m }
+    const publishedMessage = JSON.parse(JSON.stringify(m))
     if (!m.messages[0].message) {
       return
     }
@@ -124,7 +124,7 @@ async function startSock(session: string) {
         },
       })
       console.log(response.data)
-      publishedMessage.messages[0].message.imageMessage.id = response.data.id
+      publishedMessage.messages[0].message.imageMessage['id'] = response.data.id
     }
 
     const nc = await connect({
