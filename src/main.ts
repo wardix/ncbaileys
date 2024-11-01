@@ -12,7 +12,8 @@ import useMySQLAuthState from 'mysql-baileys'
 import { v4 as uuidv4 } from 'uuid'
 import { writeFile } from 'fs/promises'
 import { join } from 'path'
-import axios from 'axios'
+import axios, { AxiosResponse } from 'axios'
+import fs from 'fs'
 import FormData from 'form-data'
 
 import {
@@ -31,6 +32,7 @@ import {
   META_UPLOAD_MEDIA_URL,
   META_MEDIA_TOKEN,
   META_MEDIA_BASE_URL,
+  PROXY_MEDIA_BASE_URL,
 } from './config'
 import { connect, StringCodec } from 'nats'
 
@@ -159,6 +161,13 @@ app.use(
   }),
 )
 
+app.use(
+  '/proxy/*',
+  jwt({
+    secret: JWT_SECRET,
+  }),
+)
+
 app.get('/', (c) => c.json({ message: 'OK' }))
 
 app.get('/:mediaId', async (context) => {
@@ -169,10 +178,30 @@ app.get('/:mediaId', async (context) => {
         Authorization: `Bearer ${META_MEDIA_TOKEN}`,
       },
     })
-    return context.json(response.data)
+    const data = response.data
+    data.url = `${PROXY_MEDIA_BASE_URL}/${base64urlEncode(response.data.url)}`
+    return context.json(data)
   } catch (error) {
     console.log('Error fetching media: ', error)
     return context.json({ message: 'Failed to fetch media' }, 500)
+  }
+})
+
+app.get('/proxy/:url', async (c) => {
+  const url = base64urlDecode(c.req.param('url'))
+
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${META_MEDIA_TOKEN}`,
+      },
+      responseType: 'arraybuffer',
+    })
+
+    const arrayBuffer = response.data
+    return c.body(arrayBuffer, 200)
+  } catch (error) {
+    return c.text('Failed to proxy request', 502)
   }
 })
 
@@ -247,3 +276,17 @@ serve({
   fetch: app.fetch,
   port: Number(PORT),
 })
+
+function base64urlEncode(str: string) {
+  const base64 = btoa(str)
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
+
+
+function base64urlDecode(str: string) {
+  let base64 = str.replace(/-/g, '+').replace(/_/g, '/')
+  while (base64.length % 4) {
+    base64 += '='
+  }
+  return atob(base64)
+}

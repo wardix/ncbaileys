@@ -22,3 +22,6 @@ export const META_MEDIA_TOKEN =
 export const META_MEDIA_BASE_URL =
   process.env.META_MEDIA_BASE_URL ||
   'https://graph.facebook.com/v21.0/123456789'
+export const PROXY_MEDIA_BASE_URL =
+  process.env.PROXY_MEDIA_BASE_URL ||
+  'http://localhost:3000/proxy'
