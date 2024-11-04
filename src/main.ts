@@ -206,16 +206,25 @@ app.get('/proxy/:url', async (c) => {
 })
 
 app.post('/:phoneId/media', async (context) => {
-  const formData = new FormData()
-  const body = await context.req.parseBody()
-  for (const [key, value] of Object.entries(body)) {
-    formData.append(key, value)
-  }
+  const formData = await context.req.formData()
+  const fileData = formData.get('file') as File
+  const mimeType = formData.get('type')
+  const messagingProduct = formData.get('messaging_product')
+  const fileBuffer = Buffer.from(await fileData.arrayBuffer())
+
+  const upstreamFormData = new FormData()
+  upstreamFormData.append('type', mimeType)
+  upstreamFormData.append('messaging_product', messagingProduct)
+  upstreamFormData.append('file', fileBuffer, {
+    filename: fileData.name,
+    contentType: fileData.type,
+  })
+
   try {
     const response = await axios.post(`${META_UPLOAD_MEDIA_URL}`, formData, {
       headers: {
         Authorization: `Bearer ${META_MEDIA_TOKEN}`,
-        ...formData.getHeaders(),
+        ...upstreamFormData.getHeaders(),
       },
     })
     return context.json(response.data)
