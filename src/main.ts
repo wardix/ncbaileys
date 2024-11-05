@@ -207,12 +207,11 @@ app.get('/proxy/:url', async (c) => {
 app.post('/:phoneId/media', async (context) => {
   const formData = await context.req.formData()
   const fileData = formData.get('file') as File
-  const mimeType = formData.get('type')
   const messagingProduct = formData.get('messaging_product')
   const fileBuffer = Buffer.from(await fileData.arrayBuffer())
 
   const upstreamFormData = new FormData()
-  upstreamFormData.append('type', mimeType)
+  upstreamFormData.append('type', fileData.type)
   upstreamFormData.append('messaging_product', messagingProduct)
   upstreamFormData.append('file', fileBuffer, {
     filename: fileData.name,
@@ -286,15 +285,8 @@ app.post('/:phoneId/messages', async (context) => {
         },
         responseType: 'arraybuffer',
       })
-      const fileExt = mediaUrlResponse.data.mime_type.split('/')[1]
-      const tmpFile = path.join(
-        TMP_DIR,
-        `${phoneId}-${timestamp}-${uuid}.${fileExt}`,
-      )
-      await fs.writeFile(tmpFile, Buffer.from(mediaResponse.data))
-      console.log(tmpFile)
       sent = await sock[session].sendMessage(`${payload.to}@s.whatsapp.net`, {
-        image: tmpFile,
+        image: Buffer.from(mediaResponse.data),
         caption: payload.image.caption,
       })
     } catch (error) {
@@ -318,15 +310,8 @@ app.post('/:phoneId/messages', async (context) => {
         },
         responseType: 'arraybuffer',
       })
-      const fileExt = mediaUrlResponse.data.mime_type.split('/')[1]
-      const tmpFile = path.join(
-        TMP_DIR,
-        `${phoneId}-${timestamp}-${uuid}.${fileExt}`,
-      )
-      await fs.writeFile(tmpFile, Buffer.from(mediaResponse.data))
-      console.log(tmpFile)
       sent = await sock[session].sendMessage(`${payload.to}@s.whatsapp.net`, {
-        video: tmpFile,
+        video: Buffer.from(mediaResponse.data),
         caption: payload.image.caption,
         gifPlayback: true,
       })
