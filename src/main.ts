@@ -312,7 +312,7 @@ app.post('/:phoneId/messages', async (context) => {
       })
       sent = await sock[session].sendMessage(`${payload.to}@s.whatsapp.net`, {
         video: Buffer.from(mediaResponse.data),
-        caption: payload.image.caption,
+        caption: payload.video.caption,
         gifPlayback: true,
       })
     } catch (error) {
