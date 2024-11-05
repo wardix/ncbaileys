@@ -10,10 +10,9 @@ import {
 import * as Boom from '@hapi/boom'
 import useMySQLAuthState from 'mysql-baileys'
 import { v4 as uuidv4 } from 'uuid'
-import { writeFile } from 'fs/promises'
-import { join } from 'path'
-import axios, { AxiosResponse } from 'axios'
-import fs from 'fs'
+import fs from 'fs/promises'
+import path from 'path'
+import axios from 'axios'
 import FormData from 'form-data'
 
 import {
@@ -33,6 +32,7 @@ import {
   META_MEDIA_TOKEN,
   META_MEDIA_BASE_URL,
   PROXY_MEDIA_BASE_URL,
+  TMP_DIR,
 } from './config'
 import { connect, StringCodec } from 'nats'
 
@@ -99,8 +99,11 @@ async function startSock(session: string) {
   sock[session].ev.on('messages.upsert', async (m: any) => {
     const uuid = uuidv4()
     const timestamp = new Date().getTime()
-    const messageFilePath = join(LOG_DIR, `messages-${timestamp}-${uuid}.json`)
-    await writeFile(messageFilePath, Buffer.from(JSON.stringify(m, null, 2)))
+    const messageFilePath = path.join(
+      LOG_DIR,
+      `messages-${timestamp}-${uuid}.json`,
+    )
+    await fs.writeFile(messageFilePath, Buffer.from(JSON.stringify(m, null, 2)))
     const publishedMessage = JSON.parse(JSON.stringify(m))
     if (!m.messages[0].message) {
       return
@@ -235,11 +238,11 @@ app.post('/:phoneId/messages', async (context) => {
   const timestamp = new Date().getTime()
   const phoneId = context.req.param('phoneId')
 
-  const headerFilePath = join(
+  const headerFilePath = path.join(
     LOG_DIR,
     `${phoneId}-header-${timestamp}-${uuid}.txt`,
   )
-  const bodyFilePath = join(
+  const bodyFilePath = path.join(
     LOG_DIR,
     `${phoneId}-request-body-${timestamp}-${uuid}.txt`,
   )
@@ -248,22 +251,92 @@ app.post('/:phoneId/messages', async (context) => {
   for (const [header, value] of context.req.raw.headers) {
     headers[header] = value
   }
-  await writeFile(headerFilePath, Buffer.from(JSON.stringify(headers, null, 2)))
+  await fs.writeFile(
+    headerFilePath,
+    Buffer.from(JSON.stringify(headers, null, 2)),
+  )
 
   const bodyBuffer = await context.req.arrayBuffer()
-  await writeFile(bodyFilePath, Buffer.from(bodyBuffer))
+  await fs.writeFile(bodyFilePath, Buffer.from(bodyBuffer))
 
   if (!sockReady[session]) {
     return context.json({ message: 'socket is not ready' }, 500)
   }
 
   const payload = await context.req.json()
-  if (payload.type !== 'text') {
+  let sent = null
+  if (payload.type == 'text') {
+    sent = await sock[session].sendMessage(`${payload.to}@s.whatsapp.net`, {
+      text: payload.text.body,
+    })
+  } else if (payload.type == 'image') {
+    const mediaId = payload.image.id
+    try {
+      const mediaUrlResponse = await axios.get(
+        `${META_MEDIA_BASE_URL}/${mediaId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${META_MEDIA_TOKEN}`,
+          },
+        },
+      )
+      const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
+        headers: {
+          Authorization: `Bearer ${META_MEDIA_TOKEN}`,
+        },
+        responseType: 'arraybuffer',
+      })
+      const fileExt = mediaUrlResponse.data.mime_type.split('/')[1]
+      const tmpFile = path.join(
+        TMP_DIR,
+        `${phoneId}-${timestamp}-${uuid}.${fileExt}`,
+      )
+      await fs.writeFile(tmpFile, Buffer.from(mediaResponse.data))
+      console.log(tmpFile)
+      sent = await sock[session].sendMessage(`${payload.to}@s.whatsapp.net`, {
+        image: tmpFile,
+        caption: payload.image.caption,
+      })
+    } catch (error) {
+      console.log('Error fetching media: ', error)
+      return context.json({ message: 'Failed to fetch media' }, 500)
+    }
+  } else if (payload.type == 'video') {
+    const mediaId = payload.video.id
+    try {
+      const mediaUrlResponse = await axios.get(
+        `${META_MEDIA_BASE_URL}/${mediaId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${META_MEDIA_TOKEN}`,
+          },
+        },
+      )
+      const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
+        headers: {
+          Authorization: `Bearer ${META_MEDIA_TOKEN}`,
+        },
+        responseType: 'arraybuffer',
+      })
+      const fileExt = mediaUrlResponse.data.mime_type.split('/')[1]
+      const tmpFile = path.join(
+        TMP_DIR,
+        `${phoneId}-${timestamp}-${uuid}.${fileExt}`,
+      )
+      await fs.writeFile(tmpFile, Buffer.from(mediaResponse.data))
+      console.log(tmpFile)
+      sent = await sock[session].sendMessage(`${payload.to}@s.whatsapp.net`, {
+        video: tmpFile,
+        caption: payload.image.caption,
+        gifPlayback: true,
+      })
+    } catch (error) {
+      console.log('Error fetching media: ', error)
+      return context.json({ message: 'Failed to fetch media' }, 500)
+    }
+  } else {
     return context.json({ message: 'unable to proceed' }, 402)
   }
-  const sent = await sock[session].sendMessage(`${payload.to}@s.whatsapp.net`, {
-    text: payload.text.body,
-  })
 
   const response = JSON.parse(SEND_RESPONSE_TEMPLATE)
   response.contacts[0].input = payload.to
