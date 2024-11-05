@@ -126,6 +126,24 @@ async function startSock(session: string) {
       })
       console.log(response.data)
       publishedMessage.messages[0].message.imageMessage['id'] = response.data.id
+    } else if (m.messages[0].message.videoMessage) {
+      const buffer = await downloadMediaMessage(m.messages[0], 'buffer', {})
+      const formData = new FormData()
+      formData.append('file', buffer, {
+        filename: 'videofile',
+        contentType: m.messages[0].message.videoMessage.mimetype,
+      })
+
+      formData.append('type', m.messages[0].message.videoMessage.mimetype)
+      formData.append('messaging_product', 'whatsapp')
+      const response = await axios.post(META_UPLOAD_MEDIA_URL, formData, {
+        headers: {
+          Authorization: `Bearer ${META_MEDIA_TOKEN}`,
+          ...formData.getHeaders(),
+        },
+      })
+      console.log(response.data)
+      publishedMessage.messages[0].message.videoMessage['id'] = response.data.id
     }
 
     const nc = await connect({
