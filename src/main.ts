@@ -106,14 +106,10 @@ async function startSock(session: string) {
       return
     }
     if (m.messages[0].message.imageMessage) {
-      const buffer = await downloadMediaMessage(
-        m.messages[0],
-        'buffer',
-        {},
-      )
+      const buffer = await downloadMediaMessage(m.messages[0], 'buffer', {})
       const formData = new FormData()
       formData.append('file', buffer, {
-	filename: 'imagefile',
+        filename: 'imagefile',
         contentType: m.messages[0].message.imageMessage.mimetype,
       })
 
@@ -290,7 +286,6 @@ function base64urlEncode(str: string) {
   const base64 = btoa(str)
   return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
 }
-
 
 function base64urlDecode(str: string) {
   let base64 = str.replace(/-/g, '+').replace(/_/g, '/')
