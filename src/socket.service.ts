@@ -8,8 +8,6 @@ import useMySQLAuthState from 'mysql-baileys'
 import { v4 as uuidv4 } from 'uuid'
 import fs from 'fs/promises'
 import path from 'path'
-import axios from 'axios'
-import FormData from 'form-data'
 
 import {
   MYSQL_HOST,
@@ -21,10 +19,9 @@ import {
   LOG_DIR,
   NATS_SERVERS,
   NATS_TOKEN,
-  META_UPLOAD_MEDIA_URL,
-  META_MEDIA_TOKEN,
 } from './config'
 import { connect, StringCodec } from 'nats'
+import { uploadMedia } from './utils'
 
 export const sock: any = { [DEFAULT_SESSION]: null }
 export const sockReady: any = { [DEFAULT_SESSION]: false }
@@ -95,42 +92,21 @@ export async function startSock(session: string) {
     }
     if (m.messages[0].message.imageMessage) {
       const buffer = await downloadMediaMessage(m.messages[0], 'buffer', {})
-      const formData = new FormData()
-      formData.append('file', buffer, {
-        filename: 'imagefile',
-        contentType: m.messages[0].message.imageMessage.mimetype,
+      const media = await uploadMedia({
+        name: 'image',
+        mimeType: m.messages[0].message.imageMessage.mimetype,
+        buffer,
       })
-
-      formData.append('type', m.messages[0].message.imageMessage.mimetype)
-      formData.append('messaging_product', 'whatsapp')
-      const response = await axios.post(META_UPLOAD_MEDIA_URL, formData, {
-        headers: {
-          Authorization: `Bearer ${META_MEDIA_TOKEN}`,
-          ...formData.getHeaders(),
-        },
-      })
-      console.log(response.data)
-      publishedMessage.messages[0].message.imageMessage['id'] = response.data.id
+      publishedMessage.messages[0].message.imageMessage['id'] = media.id
     } else if (m.messages[0].message.videoMessage) {
       const buffer = await downloadMediaMessage(m.messages[0], 'buffer', {})
-      const formData = new FormData()
-      formData.append('file', buffer, {
-        filename: 'videofile',
-        contentType: m.messages[0].message.videoMessage.mimetype,
+      const media = await uploadMedia({
+        name: 'video',
+        mimeType: m.messages[0].message.imageMessage.mimetype,
+        buffer,
       })
-
-      formData.append('type', m.messages[0].message.videoMessage.mimetype)
-      formData.append('messaging_product', 'whatsapp')
-      const response = await axios.post(META_UPLOAD_MEDIA_URL, formData, {
-        headers: {
-          Authorization: `Bearer ${META_MEDIA_TOKEN}`,
-          ...formData.getHeaders(),
-        },
-      })
-      console.log(response.data)
-      publishedMessage.messages[0].message.videoMessage['id'] = response.data.id
+      publishedMessage.messages[0].message.videoMessage['id'] = media.id
     }
-
     const nc = await connect({
       servers: NATS_SERVERS,
       token: NATS_TOKEN,

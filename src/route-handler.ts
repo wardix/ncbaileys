@@ -1,82 +1,39 @@
 import { Context } from 'hono'
 import axios from 'axios'
 import { v4 as uuidv4 } from 'uuid'
-import FormData from 'form-data'
 import path from 'path'
 import fs from 'fs/promises'
-import { base64urlDecode, base64urlEncode } from './utils'
 import {
   DEFAULT_SESSION,
   LOG_DIR,
-  META_MEDIA_BASE_URL,
-  META_MEDIA_TOKEN,
-  META_UPLOAD_MEDIA_URL,
-  PROXY_MEDIA_BASE_URL,
+  MEDIA_BASE_URL,
   SEND_RESPONSE_TEMPLATE,
 } from './config'
 import { sock, sockReady } from './socket.service'
+import { uploadMedia } from './utils'
 
 export async function getMediaUrl(c: Context) {
   const mediaId = c.req.param('mediaId')
   try {
-    const response = await axios.get(`${META_MEDIA_BASE_URL}/${mediaId}`, {
-      headers: {
-        Authorization: `Bearer ${META_MEDIA_TOKEN}`,
-      },
-    })
-    const data = response.data
-    data.url = `${PROXY_MEDIA_BASE_URL}/${base64urlEncode(response.data.url)}`
-    return c.json(data)
+    const response = await axios.get(
+      `${MEDIA_BASE_URL}/${mediaId}/${mediaId}.json`,
+    )
+    return c.json(response.data)
   } catch (error) {
     console.log('Error fetching media: ', error)
     return c.json({ message: 'Failed to fetch media' }, 500)
   }
 }
 
-export async function getProxyUrl(c: Context) {
-  const url = base64urlDecode(c.req.param('url'))
-
-  try {
-    const response = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${META_MEDIA_TOKEN}`,
-      },
-      responseType: 'arraybuffer',
-    })
-
-    const arrayBuffer = response.data
-    return c.body(arrayBuffer, 200)
-  } catch (error) {
-    return c.text('Failed to proxy request', 502)
-  }
-}
-
 export async function postMedia(c: Context) {
   const formData = await c.req.formData()
   const fileData = formData.get('file') as File
-  const messagingProduct = formData.get('messaging_product')
-  const fileBuffer = Buffer.from(await fileData.arrayBuffer())
-
-  const upstreamFormData = new FormData()
-  upstreamFormData.append('type', fileData.type)
-  upstreamFormData.append('messaging_product', messagingProduct)
-  upstreamFormData.append('file', fileBuffer, {
-    filename: fileData.name,
-    contentType: fileData.type,
+  const media = await uploadMedia({
+    name: fileData.name,
+    mimeType: fileData.type,
+    buffer: Buffer.from(await fileData.arrayBuffer()),
   })
-
-  try {
-    const response = await axios.post(`${META_UPLOAD_MEDIA_URL}`, formData, {
-      headers: {
-        Authorization: `Bearer ${META_MEDIA_TOKEN}`,
-        ...upstreamFormData.getHeaders(),
-      },
-    })
-    return c.json(response.data)
-  } catch (error) {
-    console.log('Error uploading media: ', error)
-    return c.json({ message: 'Failed to upload media' }, 500)
-  }
+  return c.json(media)
 }
 
 export async function postMessage(c: Context) {
@@ -122,19 +79,9 @@ export async function postMessage(c: Context) {
     const mediaId = payload.image.id
     try {
       const mediaUrlResponse = await axios.get(
-        `${META_MEDIA_BASE_URL}/${mediaId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${META_MEDIA_TOKEN}`,
-          },
-        },
+        `${MEDIA_BASE_URL}/${mediaId}/${mediaId}.json`,
       )
-      const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
-        headers: {
-          Authorization: `Bearer ${META_MEDIA_TOKEN}`,
-        },
-        responseType: 'arraybuffer',
-      })
+      const mediaResponse = await axios.get(mediaUrlResponse.data.url)
       sent = await sock[DEFAULT_SESSION].sendMessage(
         `${payload.to}@s.whatsapp.net`,
         {
@@ -150,19 +97,9 @@ export async function postMessage(c: Context) {
     const mediaId = payload.video.id
     try {
       const mediaUrlResponse = await axios.get(
-        `${META_MEDIA_BASE_URL}/${mediaId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${META_MEDIA_TOKEN}`,
-          },
-        },
+        `${MEDIA_BASE_URL}/${mediaId}/${mediaId}.json`,
       )
-      const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
-        headers: {
-          Authorization: `Bearer ${META_MEDIA_TOKEN}`,
-        },
-        responseType: 'arraybuffer',
-      })
+      const mediaResponse = await axios.get(mediaUrlResponse.data.url)
       sent = await sock[DEFAULT_SESSION].sendMessage(
         `${payload.to}@s.whatsapp.net`,
         {

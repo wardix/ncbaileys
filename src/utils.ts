@@ -1,12 +1,46 @@
-export function base64urlEncode(str: string) {
-  const base64 = btoa(str)
-  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
-}
+import path from 'path'
+import fs from 'fs/promises'
+import { extension } from 'mime-types'
+import crypto from 'crypto'
+import { MEDIA_BASE_URL, MEDIA_DIR } from './config'
 
-export function base64urlDecode(str: string) {
-  let base64 = str.replace(/-/g, '+').replace(/_/g, '/')
-  while (base64.length % 4) {
-    base64 += '='
+export async function uploadMedia({ name, mimeType, buffer }: any) {
+  let mediaId = Date.now()
+  const mediaFileName =
+    path.extname(name) === '' ? `${name}.${extension(mimeType)}` : name
+  let storeDir = ''
+  while (true) {
+    if (`${mediaId}.json` === mediaFileName) {
+      mediaId++
+      continue
+    }
+    storeDir = path.join(MEDIA_DIR, `${mediaId}`)
+    try {
+      await fs.access(storeDir)
+    } catch (err) {
+      await fs.mkdir(storeDir, { recursive: true })
+      break
+    }
+    mediaId++
   }
-  return atob(base64)
+  const mediaFilePath = path.join(storeDir, mediaFileName)
+  const metaFilePath = path.join(storeDir, `${mediaId}.json`)
+  await fs.writeFile(mediaFilePath, buffer)
+  await fs.writeFile(
+    metaFilePath,
+    Buffer.from(
+      JSON.stringify(
+        {
+          messaging_product: 'whatsapp',
+          url: `${MEDIA_BASE_URL}/${mediaId}/${encodeURIComponent(mediaFileName)}`,
+          mime_type: mimeType,
+          sha256: crypto.createHash('sha256').update(buffer).digest('hex'),
+          file_size: buffer.length,
+        },
+        null,
+        2,
+      ),
+    ),
+  )
+  return { id: mediaId }
 }
