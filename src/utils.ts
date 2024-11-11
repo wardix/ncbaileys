@@ -42,5 +42,5 @@ export async function uploadMedia({ name, mimeType, buffer }: any) {
       ),
     ),
   )
-  return { id: mediaId }
+  return { id: `${mediaId}` }
 }
