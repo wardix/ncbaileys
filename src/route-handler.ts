@@ -81,7 +81,9 @@ export async function postMessage(c: Context) {
       const mediaUrlResponse = await axios.get(
         `${MEDIA_BASE_URL}/${mediaId}/${mediaId}.json`,
       )
-      const mediaResponse = await axios.get(mediaUrlResponse.data.url)
+      const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
+        responseType: 'arraybuffer',
+      })
       sent = await sock[DEFAULT_SESSION].sendMessage(
         `${payload.to}@s.whatsapp.net`,
         {
@@ -99,7 +101,9 @@ export async function postMessage(c: Context) {
       const mediaUrlResponse = await axios.get(
         `${MEDIA_BASE_URL}/${mediaId}/${mediaId}.json`,
       )
-      const mediaResponse = await axios.get(mediaUrlResponse.data.url)
+      const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
+        responseType: 'arraybuffer',
+      })
       sent = await sock[DEFAULT_SESSION].sendMessage(
         `${payload.to}@s.whatsapp.net`,
         {
