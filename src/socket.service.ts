@@ -2,23 +2,19 @@ import {
   fetchLatestBaileysVersion,
   makeWASocket,
   downloadMediaMessage,
+  useMultiFileAuthState,
 } from '@whiskeysockets/baileys'
 import * as Boom from '@hapi/boom'
-import useMySQLAuthState from 'mysql-baileys'
 import { v4 as uuidv4 } from 'uuid'
 import fs from 'fs/promises'
 import path from 'path'
 
 import {
-  MYSQL_HOST,
-  MYSQL_USER,
-  MYSQL_PORT,
-  MYSQL_PASSWORD,
-  MYSQL_DATABASE,
   DEFAULT_SESSION,
   LOG_DIR,
   NATS_SERVERS,
   NATS_TOKEN,
+  SESSION_DIR,
 } from './config'
 import { connect, StringCodec } from 'nats'
 import { uploadMedia } from './utils'
@@ -33,15 +29,10 @@ export async function startSock(session: string) {
     return startSock(session)
   }
 
-  const { state, saveCreds, removeCreds } = await useMySQLAuthState({
-    session,
-    host: MYSQL_HOST,
-    port: Number(MYSQL_PORT),
-    user: MYSQL_USER,
-    password: MYSQL_PASSWORD,
-    database: MYSQL_DATABASE,
-    tableName: 'auth',
-  })
+  const sessionPath = path.join(SESSION_DIR, session)
+  await fs.mkdir(sessionPath, { recursive: true })
+
+  const { state, saveCreds } = await useMultiFileAuthState(sessionPath)
 
   sock[session] = makeWASocket({
     auth: state,
@@ -51,12 +42,12 @@ export async function startSock(session: string) {
 
   sock[session].ev.on('creds.update', saveCreds)
 
-  sock[session].ev.on('connection.update', (update: any) => {
+  sock[session].ev.on('connection.update', async (update: any) => {
     const { connection, lastDisconnect } = update
     if (connection === 'close') {
       sockReady[session] = false
       if (Boom.boomify(lastDisconnect.error).output.statusCode == 401) {
-        removeCreds()
+        await fs.rmdir(sessionPath, { recursive: true })
       }
       const shouldReconnect =
         lastDisconnect && lastDisconnect.error
