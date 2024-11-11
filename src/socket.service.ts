@@ -93,7 +93,7 @@ export async function startSock(session: string) {
       const buffer = await downloadMediaMessage(m.messages[0], 'buffer', {})
       const media = await uploadMedia({
         name: 'video',
-        mimeType: m.messages[0].message.imageMessage.mimetype,
+        mimeType: m.messages[0].message.videoMessage.mimetype,
         buffer,
       })
       publishedMessage.messages[0].message.videoMessage['id'] = media.id
