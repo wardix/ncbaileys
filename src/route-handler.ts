@@ -116,6 +116,27 @@ export async function postMessage(c: Context) {
       console.log('Error fetching media: ', error)
       return c.json({ message: 'Failed to fetch media' }, 500)
     }
+  } else if (payload.type == 'document') {
+    const mediaId = payload.document.id
+    try {
+      const mediaUrlResponse = await axios.get(
+        `${MEDIA_BASE_URL}/${mediaId}/${mediaId}.json`,
+      )
+      const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
+        responseType: 'arraybuffer',
+      })
+      sent = await sock[DEFAULT_SESSION].sendMessage(
+        `${payload.to}@s.whatsapp.net`,
+        {
+          document: Buffer.from(mediaResponse.data),
+          caption: payload.document.caption,
+          fileName: payload.document.filename,
+        },
+      )
+    } catch (error) {
+      console.log('Error fetching media: ', error)
+      return c.json({ message: 'Failed to fetch media' }, 500)
+    }
   } else {
     return c.json({ message: 'unable to proceed' }, 402)
   }
