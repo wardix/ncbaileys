@@ -97,6 +97,19 @@ export async function startSock(session: string) {
         buffer,
       })
       publishedMessage.messages[0].message.videoMessage['id'] = media.id
+    } else if (m.messages[0].message.documentWithCaptionMessage) {
+      const buffer = await downloadMediaMessage(m.messages[0], 'buffer', {})
+      const media = await uploadMedia({
+        name: m.messages[0].message.documentWithCaptionMessage.message
+          .documentMessage.fileName,
+        mimeType:
+          m.messages[0].message.documentWithCaptionMessage.message
+            .documentMessage.mimetype,
+        buffer,
+      })
+      publishedMessage.messages[0].message.documentWithCaptionMessage.message.documentMessage[
+        'id'
+      ] = media.id
     }
     const nc = await connect({
       servers: NATS_SERVERS,
