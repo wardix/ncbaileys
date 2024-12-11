@@ -3,6 +3,7 @@ import {
   makeWASocket,
   downloadMediaMessage,
   useMultiFileAuthState,
+  makeInMemoryStore,
 } from '@whiskeysockets/baileys'
 import * as Boom from '@hapi/boom'
 import { v4 as uuidv4 } from 'uuid'
@@ -20,6 +21,7 @@ import { connect, StringCodec } from 'nats'
 import { uploadMedia } from './utils'
 
 export const sock: any = { [DEFAULT_SESSION]: null }
+export const store: any = { [DEFAULT_SESSION]: makeInMemoryStore({}) }
 export const sockReady: any = { [DEFAULT_SESSION]: false }
 
 export async function startSock(session: string) {
@@ -30,7 +32,12 @@ export async function startSock(session: string) {
   }
 
   const sessionPath = path.join(SESSION_DIR, session)
+  const storeFilePath = path.join(sessionPath, 'baileys_store.js')
   await fs.mkdir(sessionPath, { recursive: true })
+  store[session].readFromFile(storeFilePath)
+  setInterval(() => {
+    store[session].writeToFile(storeFilePath)
+  }, 10000)
 
   const { state, saveCreds } = await useMultiFileAuthState(sessionPath)
 
@@ -39,6 +46,7 @@ export async function startSock(session: string) {
     version,
     printQRInTerminal: true,
   })
+  store[session].bind(sock[session].ev)
 
   sock[session].ev.on('creds.update', saveCreds)
 

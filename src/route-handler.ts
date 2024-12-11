@@ -9,7 +9,7 @@ import {
   MEDIA_BASE_URL,
   SEND_RESPONSE_TEMPLATE,
 } from './config'
-import { sock, sockReady } from './socket.service'
+import { sock, sockReady, store } from './socket.service'
 import { uploadMedia } from './utils'
 
 export async function getMediaUrl(c: Context) {
@@ -69,12 +69,26 @@ export async function postMessage(c: Context) {
   const payload = await c.req.json()
   let sent = null
   if (payload.type == 'text') {
-    sent = await sock[DEFAULT_SESSION].sendMessage(
-      `${payload.to}@s.whatsapp.net`,
-      {
-        text: payload.text.body,
-      },
-    )
+    if (payload.context?.message_id) {
+      const quoted = await store[DEFAULT_SESSION].loadMessage(
+        `${payload.to}@s.whatsapp.net`,
+        payload.context.message_id,
+      )
+      sent = await sock[DEFAULT_SESSION].sendMessage(
+        `${payload.to}@s.whatsapp.net`,
+        {
+          text: payload.text.body,
+        },
+        { quoted },
+      )
+    } else {
+      sent = await sock[DEFAULT_SESSION].sendMessage(
+        `${payload.to}@s.whatsapp.net`,
+        {
+          text: payload.text.body,
+        },
+      )
+    }
   } else if (payload.type == 'image') {
     const mediaId = payload.image.id
     try {
