@@ -57,7 +57,7 @@ async function main() {
       }
     } else if (connection === 'open') {
       console.log('Opened connection')
-      process.exit()
+      setTimeout(() => process.exit(), 10000)
     }
   })
 }
