@@ -3,26 +3,19 @@ import {
   makeWASocket,
   downloadMediaMessage,
   useMultiFileAuthState,
-  makeInMemoryStore,
 } from '@whiskeysockets/baileys'
 import * as Boom from '@hapi/boom'
 import { v4 as uuidv4 } from 'uuid'
 import fs from 'fs/promises'
 import path from 'path'
 
-import {
-  DEFAULT_SESSION,
-  LOG_DIR,
-  NATS_SERVERS,
-  NATS_TOKEN,
-  SESSION_DIR,
-} from './config'
+import { LOG_DIR, NATS_SERVERS, NATS_TOKEN, SESSION_DIR } from './config'
 import { connect, StringCodec } from 'nats'
 import { uploadMedia } from './utils'
 
-export const sock: any = { [DEFAULT_SESSION]: null }
-export const store: any = { [DEFAULT_SESSION]: makeInMemoryStore({}) }
-export const sockReady: any = { [DEFAULT_SESSION]: false }
+export const sock: any = {}
+export const store: any = {}
+export const sockReady: any = {}
 
 export async function startSock(session: string) {
   const { error, version } = await fetchLatestBaileysVersion()
@@ -32,9 +25,19 @@ export async function startSock(session: string) {
   }
 
   const sessionPath = path.join(SESSION_DIR, session)
-  const storeFilePath = path.join(sessionPath, 'baileys_store.js')
+  const storeFilePath = path.join(sessionPath, 'baileys_store.json')
   await fs.mkdir(sessionPath, { recursive: true })
-  store[session].readFromFile(storeFilePath)
+  try {
+    const uuid = uuidv4()
+    const timestamp = new Date().getTime()
+    const archiveStoreFilePath = path.join(
+      SESSION_DIR,
+      `baileys_store-${timestamp}-${uuid}.json`,
+    )
+    await fs.rename(storeFilePath, archiveStoreFilePath)
+  } catch (error) {
+    console.log(`Error renaming store file: ${error}`)
+  }
   setInterval(() => {
     store[session].writeToFile(storeFilePath)
   }, 10000)
@@ -126,7 +129,7 @@ export async function startSock(session: string) {
     const js = nc.jetstream()
     const sc = StringCodec()
     await js.publish(
-      'events.ncbaileys.messages_received',
+      `events.ncbaileys.${session}.messages_received`,
       sc.encode(JSON.stringify(publishedMessage)),
     )
     await nc.close()

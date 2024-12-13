@@ -3,12 +3,7 @@ import axios from 'axios'
 import { v4 as uuidv4 } from 'uuid'
 import path from 'path'
 import fs from 'fs/promises'
-import {
-  DEFAULT_SESSION,
-  LOG_DIR,
-  MEDIA_BASE_URL,
-  SEND_RESPONSE_TEMPLATE,
-} from './config'
+import { LOG_DIR, MEDIA_BASE_URL, SEND_RESPONSE_TEMPLATE } from './config'
 import { sock, sockReady, store } from './socket.service'
 import { uploadMedia } from './utils'
 
@@ -62,7 +57,7 @@ export async function postMessage(c: Context) {
   const bodyBuffer = await c.req.arrayBuffer()
   await fs.writeFile(bodyFilePath, Buffer.from(bodyBuffer))
 
-  if (!sockReady[DEFAULT_SESSION]) {
+  if (!sockReady[phoneId]) {
     return c.json({ message: 'socket is not ready' }, 500)
   }
 
@@ -70,11 +65,11 @@ export async function postMessage(c: Context) {
   let sent = null
   if (payload.type == 'text') {
     if (payload.context?.message_id) {
-      const quoted = await store[DEFAULT_SESSION].loadMessage(
+      const quoted = await store[phoneId].loadMessage(
         `${payload.to}@s.whatsapp.net`,
         payload.context.message_id,
       )
-      sent = await sock[DEFAULT_SESSION].sendMessage(
+      sent = await sock[phoneId].sendMessage(
         `${payload.to}@s.whatsapp.net`,
         {
           text: payload.text.body,
@@ -82,12 +77,9 @@ export async function postMessage(c: Context) {
         { quoted },
       )
     } else {
-      sent = await sock[DEFAULT_SESSION].sendMessage(
-        `${payload.to}@s.whatsapp.net`,
-        {
-          text: payload.text.body,
-        },
-      )
+      sent = await sock[phoneId].sendMessage(`${payload.to}@s.whatsapp.net`, {
+        text: payload.text.body,
+      })
     }
   } else if (payload.type == 'image') {
     const mediaId = payload.image.id
@@ -98,13 +90,10 @@ export async function postMessage(c: Context) {
       const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
         responseType: 'arraybuffer',
       })
-      sent = await sock[DEFAULT_SESSION].sendMessage(
-        `${payload.to}@s.whatsapp.net`,
-        {
-          image: Buffer.from(mediaResponse.data),
-          caption: payload.image.caption,
-        },
-      )
+      sent = await sock[phoneId].sendMessage(`${payload.to}@s.whatsapp.net`, {
+        image: Buffer.from(mediaResponse.data),
+        caption: payload.image.caption,
+      })
     } catch (error) {
       console.log('Error fetching media: ', error)
       return c.json({ message: 'Failed to fetch media' }, 500)
@@ -118,14 +107,11 @@ export async function postMessage(c: Context) {
       const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
         responseType: 'arraybuffer',
       })
-      sent = await sock[DEFAULT_SESSION].sendMessage(
-        `${payload.to}@s.whatsapp.net`,
-        {
-          video: Buffer.from(mediaResponse.data),
-          caption: payload.video.caption,
-          gifPlayback: true,
-        },
-      )
+      sent = await sock[phoneId].sendMessage(`${payload.to}@s.whatsapp.net`, {
+        video: Buffer.from(mediaResponse.data),
+        caption: payload.video.caption,
+        gifPlayback: true,
+      })
     } catch (error) {
       console.log('Error fetching media: ', error)
       return c.json({ message: 'Failed to fetch media' }, 500)
@@ -139,14 +125,11 @@ export async function postMessage(c: Context) {
       const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
         responseType: 'arraybuffer',
       })
-      sent = await sock[DEFAULT_SESSION].sendMessage(
-        `${payload.to}@s.whatsapp.net`,
-        {
-          document: Buffer.from(mediaResponse.data),
-          caption: payload.document.caption,
-          fileName: payload.document.filename,
-        },
-      )
+      sent = await sock[phoneId].sendMessage(`${payload.to}@s.whatsapp.net`, {
+        document: Buffer.from(mediaResponse.data),
+        caption: payload.document.caption,
+        fileName: payload.document.filename,
+      })
     } catch (error) {
       console.log('Error fetching media: ', error)
       return c.json({ message: 'Failed to fetch media' }, 500)

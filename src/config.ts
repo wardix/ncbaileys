@@ -3,7 +3,7 @@ import { config } from 'dotenv'
 config()
 
 export const PORT = process.env.PORT || 3000
-export const DEFAULT_SESSION = process.env.DEFAULT_SESSION || 'main'
+export const WA_ACCOUNTS = process.env.WA_ACCOUNTS || ['628866442200']
 export const LOG_DIR = process.env.LOG_DIR || '/tmp'
 export const MEDIA_DIR = process.env.MEDIA_DIR || '/tmp'
 export const SESSION_DIR = process.env.SESSION_DIR || '/tmp'
