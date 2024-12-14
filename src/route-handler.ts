@@ -63,12 +63,15 @@ export async function postMessage(c: Context) {
 
   const payload = await c.req.json()
   let sent = null
+  let quoted = null
+  if (payload.context?.message_id) {
+    quoted = await store[phoneId].loadMessage(
+      `${payload.to}@s.whatsapp.net`,
+      payload.context.message_id,
+    )
+  }
   if (payload.type == 'text') {
-    if (payload.context?.message_id) {
-      const quoted = await store[phoneId].loadMessage(
-        `${payload.to}@s.whatsapp.net`,
-        payload.context.message_id,
-      )
+    if (quoted) {
       sent = await sock[phoneId].sendMessage(
         `${payload.to}@s.whatsapp.net`,
         {
@@ -90,10 +93,21 @@ export async function postMessage(c: Context) {
       const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
         responseType: 'arraybuffer',
       })
-      sent = await sock[phoneId].sendMessage(`${payload.to}@s.whatsapp.net`, {
-        image: Buffer.from(mediaResponse.data),
-        caption: payload.image.caption,
-      })
+      if (quoted) {
+        sent = await sock[phoneId].sendMessage(
+          `${payload.to}@s.whatsapp.net`,
+          {
+            image: Buffer.from(mediaResponse.data),
+            caption: payload.image.caption,
+          },
+          { quoted },
+        )
+      } else {
+        sent = await sock[phoneId].sendMessage(`${payload.to}@s.whatsapp.net`, {
+          image: Buffer.from(mediaResponse.data),
+          caption: payload.image.caption,
+        })
+      }
     } catch (error) {
       console.log('Error fetching media: ', error)
       return c.json({ message: 'Failed to fetch media' }, 500)
@@ -107,11 +121,23 @@ export async function postMessage(c: Context) {
       const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
         responseType: 'arraybuffer',
       })
-      sent = await sock[phoneId].sendMessage(`${payload.to}@s.whatsapp.net`, {
-        video: Buffer.from(mediaResponse.data),
-        caption: payload.video.caption,
-        gifPlayback: true,
-      })
+      if (quoted) {
+        sent = await sock[phoneId].sendMessage(
+          `${payload.to}@s.whatsapp.net`,
+          {
+            video: Buffer.from(mediaResponse.data),
+            caption: payload.video.caption,
+            gifPlayback: true,
+          },
+          { quoted },
+        )
+      } else {
+        sent = await sock[phoneId].sendMessage(`${payload.to}@s.whatsapp.net`, {
+          video: Buffer.from(mediaResponse.data),
+          caption: payload.video.caption,
+          gifPlayback: true,
+        })
+      }
     } catch (error) {
       console.log('Error fetching media: ', error)
       return c.json({ message: 'Failed to fetch media' }, 500)
@@ -125,11 +151,23 @@ export async function postMessage(c: Context) {
       const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
         responseType: 'arraybuffer',
       })
-      sent = await sock[phoneId].sendMessage(`${payload.to}@s.whatsapp.net`, {
-        document: Buffer.from(mediaResponse.data),
-        caption: payload.document.caption,
-        fileName: payload.document.filename,
-      })
+      if (quoted) {
+        sent = await sock[phoneId].sendMessage(
+          `${payload.to}@s.whatsapp.net`,
+          {
+            document: Buffer.from(mediaResponse.data),
+            caption: payload.document.caption,
+            fileName: payload.document.filename,
+          },
+          { quoted },
+        )
+      } else {
+        sent = await sock[phoneId].sendMessage(`${payload.to}@s.whatsapp.net`, {
+          document: Buffer.from(mediaResponse.data),
+          caption: payload.document.caption,
+          fileName: payload.document.filename,
+        })
+      }
     } catch (error) {
       console.log('Error fetching media: ', error)
       return c.json({ message: 'Failed to fetch media' }, 500)
