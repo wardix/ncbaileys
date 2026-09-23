@@ -21,3 +21,8 @@ export const MONGODB_DATABASE = process.env.MONGODB_DATABASE || 'baileys'
 
 export const VALKEY_HOST = process.env.VALKEY_HOST || 'localhost'
 export const VALKEY_PORT = Number(process.env.VALKEY_PORT || 6379)
+
+// Typing indicator shown before sending a message; set TYPING_MAX_MS=0 to disable
+export const TYPING_MS_PER_CHAR = Number(process.env.TYPING_MS_PER_CHAR || 50)
+export const TYPING_MIN_MS = Number(process.env.TYPING_MIN_MS || 1000)
+export const TYPING_MAX_MS = Number(process.env.TYPING_MAX_MS || 5000)
