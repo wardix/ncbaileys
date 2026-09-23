@@ -3,10 +3,80 @@ import axios from 'axios'
 import { v4 as uuidv4 } from 'uuid'
 import path from 'path'
 import fs from 'fs/promises'
-import { LOG_DIR, MEDIA_BASE_URL, SEND_RESPONSE_TEMPLATE } from './config'
+import {
+  LOG_DIR,
+  MEDIA_BASE_URL,
+  SEND_RESPONSE_TEMPLATE,
+  TYPING_MAX_MS,
+  TYPING_MIN_MS,
+  TYPING_MS_PER_CHAR,
+} from './config'
 import { sock, sockReady } from './socket.service'
 import { uploadMedia } from './utils'
 import { loadMessage } from './valkey-mongo-store'
+
+const PRESENCE_TYPES = [
+  'available',
+  'unavailable',
+  'composing',
+  'recording',
+  'paused',
+]
+
+function toJid(to: string) {
+  return to.endsWith('@g.us') ? to : `${to}@s.whatsapp.net`
+}
+
+// Show "typing..." to the recipient for a duration based on text length.
+// Failures are only logged so they never block sending the message.
+async function simulateTyping(phoneId: string, to: string, text = '') {
+  if (TYPING_MAX_MS <= 0) {
+    return
+  }
+  const duration = Math.min(
+    Math.max(text.length * TYPING_MS_PER_CHAR, TYPING_MIN_MS),
+    TYPING_MAX_MS,
+  )
+  try {
+    await sock[phoneId].presenceSubscribe(to)
+    await sock[phoneId].sendPresenceUpdate('composing', to)
+    await new Promise((resolve) => setTimeout(resolve, duration))
+    await sock[phoneId].sendPresenceUpdate('paused', to)
+  } catch (error) {
+    console.log('Error sending typing presence: ', error)
+  }
+}
+
+export async function postPresence(c: Context) {
+  const phoneId = c.req.param('phoneId')
+  if (!sockReady[phoneId]) {
+    return c.json({ message: 'socket is not ready' }, 500)
+  }
+  const payload = await c.req.json()
+  if (!PRESENCE_TYPES.includes(payload.type)) {
+    return c.json(
+      { message: `type must be one of: ${PRESENCE_TYPES.join(', ')}` },
+      400,
+    )
+  }
+  const isChatPresence = ['composing', 'recording', 'paused'].includes(
+    payload.type,
+  )
+  if (isChatPresence && !payload.to) {
+    return c.json({ message: `to is required for type ${payload.type}` }, 400)
+  }
+  const to = payload.to ? toJid(payload.to) : undefined
+  try {
+    if (isChatPresence) {
+      await sock[phoneId].presenceSubscribe(to!)
+    }
+    await sock[phoneId].sendPresenceUpdate(payload.type, to)
+  } catch (error) {
+    console.log('Error sending presence: ', error)
+    return c.json({ message: 'Failed to send presence' }, 500)
+  }
+  return c.json({ success: true })
+}
 
 export async function getMediaUrl(c: Context) {
   const mediaId = c.req.param('mediaId')
@@ -65,11 +135,17 @@ export async function postMessage(c: Context) {
   const payload = await c.req.json()
   let sent = null
   let quoted = null
-  const to = payload.to.endsWith('@g.us')
-    ? payload.to
-    : `${payload.to}@s.whatsapp.net`
+  const to = toJid(payload.to)
   if (payload.context?.message_id) {
     quoted = await loadMessage(to, payload.context.message_id)
+  }
+  if (payload.typing !== false) {
+    const typingText =
+      payload.text?.body ??
+      payload.image?.caption ??
+      payload.video?.caption ??
+      payload.document?.caption
+    await simulateTyping(phoneId, to, typingText)
   }
   if (payload.type == 'text') {
     if (quoted) {

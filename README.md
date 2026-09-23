@@ -155,6 +155,21 @@ Mengirim pesan teks, gambar, video, atau dokumen.
 }
 ```
 
+Sebelum pesan dikirim, penerima akan melihat status "sedang mengetik..." selama `panjang teks × TYPING_MS_PER_CHAR` ms (dibatasi `TYPING_MIN_MS`–`TYPING_MAX_MS`). Tambahkan `"typing": false` pada payload untuk melewati indikator ini, atau set `TYPING_MAX_MS=0` untuk menonaktifkannya sepenuhnya.
+
+### Mengirim Presence (Sedang Mengetik)
+
+**POST** `/:phoneId/presence`
+
+```json
+{
+  "to": "628123456789",
+  "type": "composing"
+}
+```
+
+`type`: `composing` (sedang mengetik), `recording` (sedang merekam audio), `paused` (berhenti mengetik), `available` (online), `unavailable` (offline). `to` wajib untuk `composing`, `recording`, dan `paused`. Indikator mengetik akan hilang sendiri setelah beberapa detik, jadi kirim ulang secara berkala selama user masih mengetik.
+
 ### Upload Media
 
 **POST** `/media`
@@ -331,6 +346,9 @@ valkey-cli ping
 | `NATS_TOKEN` | `` | Token auth NATS |
 | `MEDIA_BASE_URL` | `http://localhost:3000/media` | Base URL media service |
 | `SEND_RESPONSE_TEMPLATE` | `{}` | Response template |
+| `TYPING_MS_PER_CHAR` | `50` | Durasi "sedang mengetik" per karakter (ms) |
+| `TYPING_MIN_MS` | `1000` | Durasi minimum "sedang mengetik" (ms) |
+| `TYPING_MAX_MS` | `5000` | Durasi maksimum "sedang mengetik" (ms); `0` = nonaktif |
 
 ## Scripts
 
