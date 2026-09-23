@@ -157,6 +157,10 @@ Mengirim pesan teks, gambar, video, atau dokumen.
 
 Sebelum pesan dikirim, penerima akan melihat status "sedang mengetik..." selama `panjang teks × TYPING_MS_PER_CHAR` ms (dibatasi `TYPING_MIN_MS`–`TYPING_MAX_MS`). Tambahkan `"typing": false` pada payload untuk melewati indikator ini, atau set `TYPING_MAX_MS=0` untuk menonaktifkannya sepenuhnya.
 
+Media (`image`, `video`, `document`) bisa dikirim dengan `id` dari media service atau `link` URL publik, contoh `"image": { "link": "https://...", "caption": "..." }`.
+
+Sebelum mengirim ke nomor perorangan, service mengecek apakah nomor terdaftar di WhatsApp (hasil di-cache 24 jam). Jika tidak terdaftar, response `404` dengan `{"error": {"code": 131026, ...}}` dan pesan tidak dikirim. Mengirim ke nomor yang tidak terdaftar adalah sinyal spam yang dapat membuat nomor diblokir.
+
 ### Mengirim Presence (Sedang Mengetik)
 
 **POST** `/:phoneId/presence`

@@ -47,6 +47,45 @@ async function simulateTyping(phoneId: string, to: string, text = '') {
   }
 }
 
+const WA_CHECK_TTL_MS = 24 * 60 * 60 * 1000
+const waCheckCache: Record<string, { exists: boolean; expiresAt: number }> = {}
+
+// Sending to numbers that are not on WhatsApp is a strong spam signal,
+// so check (and cache) registration before sending to an individual chat.
+// Fails open: if the check itself errors, the message is still sent.
+async function isOnWhatsApp(phoneId: string, jid: string) {
+  if (jid.endsWith('@g.us')) {
+    return true
+  }
+  const cached = waCheckCache[jid]
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.exists
+  }
+  try {
+    const [result] = (await sock[phoneId].onWhatsApp(jid)) ?? []
+    const exists = !!result?.exists
+    waCheckCache[jid] = { exists, expiresAt: Date.now() + WA_CHECK_TTL_MS }
+    return exists
+  } catch (error) {
+    console.log('Error checking whatsapp number: ', error)
+    return true
+  }
+}
+
+// Media is either a public link (WABA style) or an id in the media service
+async function loadMedia(media: { id?: string; link?: string }) {
+  if (media.link) {
+    return { url: media.link }
+  }
+  const mediaUrlResponse = await axios.get(
+    `${MEDIA_BASE_URL}/${media.id}/${media.id}.json`,
+  )
+  const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
+    responseType: 'arraybuffer',
+  })
+  return Buffer.from(mediaResponse.data)
+}
+
 export async function postPresence(c: Context) {
   const phoneId = c.req.param('phoneId')
   if (!sockReady[phoneId]) {
@@ -136,6 +175,17 @@ export async function postMessage(c: Context) {
   let sent = null
   let quoted = null
   const to = toJid(payload.to)
+  if (!(await isOnWhatsApp(phoneId, to))) {
+    return c.json(
+      {
+        error: {
+          message: `${payload.to} is not registered on WhatsApp`,
+          code: 131026,
+        },
+      },
+      404,
+    )
+  }
   if (payload.context?.message_id) {
     quoted = await loadMessage(to, payload.context.message_id)
   }
@@ -165,26 +215,20 @@ export async function postMessage(c: Context) {
       })
     }
   } else if (payload.type == 'image') {
-    const mediaId = payload.image.id
     try {
-      const mediaUrlResponse = await axios.get(
-        `${MEDIA_BASE_URL}/${mediaId}/${mediaId}.json`,
-      )
-      const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
-        responseType: 'arraybuffer',
-      })
+      const media = await loadMedia(payload.image)
       if (quoted) {
         sent = await sock[phoneId].sendMessage(
           `${payload.to}@s.whatsapp.net`,
           {
-            image: Buffer.from(mediaResponse.data),
+            image: media,
             caption: payload.image.caption,
           },
           { quoted },
         )
       } else {
         sent = await sock[phoneId].sendMessage(to, {
-          image: Buffer.from(mediaResponse.data),
+          image: media,
           caption: payload.image.caption,
         })
       }
@@ -193,19 +237,13 @@ export async function postMessage(c: Context) {
       return c.json({ message: 'Failed to fetch media' }, 500)
     }
   } else if (payload.type == 'video') {
-    const mediaId = payload.video.id
     try {
-      const mediaUrlResponse = await axios.get(
-        `${MEDIA_BASE_URL}/${mediaId}/${mediaId}.json`,
-      )
-      const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
-        responseType: 'arraybuffer',
-      })
+      const media = await loadMedia(payload.video)
       if (quoted) {
         sent = await sock[phoneId].sendMessage(
           `${payload.to}@s.whatsapp.net`,
           {
-            video: Buffer.from(mediaResponse.data),
+            video: media,
             caption: payload.video.caption,
             gifPlayback: true,
           },
@@ -213,7 +251,7 @@ export async function postMessage(c: Context) {
         )
       } else {
         sent = await sock[phoneId].sendMessage(to, {
-          video: Buffer.from(mediaResponse.data),
+          video: media,
           caption: payload.video.caption,
           gifPlayback: true,
         })
@@ -223,19 +261,13 @@ export async function postMessage(c: Context) {
       return c.json({ message: 'Failed to fetch media' }, 500)
     }
   } else if (payload.type == 'document') {
-    const mediaId = payload.document.id
     try {
-      const mediaUrlResponse = await axios.get(
-        `${MEDIA_BASE_URL}/${mediaId}/${mediaId}.json`,
-      )
-      const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
-        responseType: 'arraybuffer',
-      })
+      const media = await loadMedia(payload.document)
       if (quoted) {
         sent = await sock[phoneId].sendMessage(
           to,
           {
-            document: Buffer.from(mediaResponse.data),
+            document: media,
             caption: payload.document.caption,
             fileName: payload.document.filename,
           },
@@ -243,7 +275,7 @@ export async function postMessage(c: Context) {
         )
       } else {
         sent = await sock[phoneId].sendMessage(to, {
-          document: Buffer.from(mediaResponse.data),
+          document: media,
           caption: payload.document.caption,
           fileName: payload.document.filename,
         })
