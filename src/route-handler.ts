@@ -3,10 +3,119 @@ import axios from 'axios'
 import { v4 as uuidv4 } from 'uuid'
 import path from 'path'
 import fs from 'fs/promises'
-import { LOG_DIR, MEDIA_BASE_URL, SEND_RESPONSE_TEMPLATE } from './config'
+import {
+  LOG_DIR,
+  MEDIA_BASE_URL,
+  SEND_RESPONSE_TEMPLATE,
+  TYPING_MAX_MS,
+  TYPING_MIN_MS,
+  TYPING_MS_PER_CHAR,
+} from './config'
 import { sock, sockReady } from './socket.service'
 import { uploadMedia } from './utils'
 import { loadMessage } from './valkey-mongo-store'
+
+const PRESENCE_TYPES = [
+  'available',
+  'unavailable',
+  'composing',
+  'recording',
+  'paused',
+]
+
+function toJid(to: string) {
+  return to.endsWith('@g.us') ? to : `${to}@s.whatsapp.net`
+}
+
+// Show "typing..." to the recipient for a duration based on text length.
+// Failures are only logged so they never block sending the message.
+async function simulateTyping(phoneId: string, to: string, text = '') {
+  if (TYPING_MAX_MS <= 0) {
+    return
+  }
+  const duration = Math.min(
+    Math.max(text.length * TYPING_MS_PER_CHAR, TYPING_MIN_MS),
+    TYPING_MAX_MS,
+  )
+  try {
+    await sock[phoneId].presenceSubscribe(to)
+    await sock[phoneId].sendPresenceUpdate('composing', to)
+    await new Promise((resolve) => setTimeout(resolve, duration))
+    await sock[phoneId].sendPresenceUpdate('paused', to)
+  } catch (error) {
+    console.log('Error sending typing presence: ', error)
+  }
+}
+
+const WA_CHECK_TTL_MS = 24 * 60 * 60 * 1000
+const waCheckCache: Record<string, { exists: boolean; expiresAt: number }> = {}
+
+// Sending to numbers that are not on WhatsApp is a strong spam signal,
+// so check (and cache) registration before sending to an individual chat.
+// Fails open: if the check itself errors, the message is still sent.
+async function isOnWhatsApp(phoneId: string, jid: string) {
+  if (jid.endsWith('@g.us')) {
+    return true
+  }
+  const cached = waCheckCache[jid]
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.exists
+  }
+  try {
+    const [result] = (await sock[phoneId].onWhatsApp(jid)) ?? []
+    const exists = !!result?.exists
+    waCheckCache[jid] = { exists, expiresAt: Date.now() + WA_CHECK_TTL_MS }
+    return exists
+  } catch (error) {
+    console.log('Error checking whatsapp number: ', error)
+    return true
+  }
+}
+
+// Media is either a public link (WABA style) or an id in the media service
+async function loadMedia(media: { id?: string; link?: string }) {
+  if (media.link) {
+    return { url: media.link }
+  }
+  const mediaUrlResponse = await axios.get(
+    `${MEDIA_BASE_URL}/${media.id}/${media.id}.json`,
+  )
+  const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
+    responseType: 'arraybuffer',
+  })
+  return Buffer.from(mediaResponse.data)
+}
+
+export async function postPresence(c: Context) {
+  const phoneId = c.req.param('phoneId')
+  if (!sockReady[phoneId]) {
+    return c.json({ message: 'socket is not ready' }, 500)
+  }
+  const payload = await c.req.json()
+  if (!PRESENCE_TYPES.includes(payload.type)) {
+    return c.json(
+      { message: `type must be one of: ${PRESENCE_TYPES.join(', ')}` },
+      400,
+    )
+  }
+  const isChatPresence = ['composing', 'recording', 'paused'].includes(
+    payload.type,
+  )
+  if (isChatPresence && !payload.to) {
+    return c.json({ message: `to is required for type ${payload.type}` }, 400)
+  }
+  const to = payload.to ? toJid(payload.to) : undefined
+  try {
+    if (isChatPresence) {
+      await sock[phoneId].presenceSubscribe(to!)
+    }
+    await sock[phoneId].sendPresenceUpdate(payload.type, to)
+  } catch (error) {
+    console.log('Error sending presence: ', error)
+    return c.json({ message: 'Failed to send presence' }, 500)
+  }
+  return c.json({ success: true })
+}
 
 export async function getMediaUrl(c: Context) {
   const mediaId = c.req.param('mediaId')
@@ -65,11 +174,28 @@ export async function postMessage(c: Context) {
   const payload = await c.req.json()
   let sent = null
   let quoted = null
-  const to = payload.to.endsWith('@g.us')
-    ? payload.to
-    : `${payload.to}@s.whatsapp.net`
+  const to = toJid(payload.to)
+  if (!(await isOnWhatsApp(phoneId, to))) {
+    return c.json(
+      {
+        error: {
+          message: `${payload.to} is not registered on WhatsApp`,
+          code: 131026,
+        },
+      },
+      404,
+    )
+  }
   if (payload.context?.message_id) {
     quoted = await loadMessage(to, payload.context.message_id)
+  }
+  if (payload.typing !== false) {
+    const typingText =
+      payload.text?.body ??
+      payload.image?.caption ??
+      payload.video?.caption ??
+      payload.document?.caption
+    await simulateTyping(phoneId, to, typingText)
   }
   if (payload.type == 'text') {
     if (quoted) {
@@ -89,26 +215,20 @@ export async function postMessage(c: Context) {
       })
     }
   } else if (payload.type == 'image') {
-    const mediaId = payload.image.id
     try {
-      const mediaUrlResponse = await axios.get(
-        `${MEDIA_BASE_URL}/${mediaId}/${mediaId}.json`,
-      )
-      const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
-        responseType: 'arraybuffer',
-      })
+      const media = await loadMedia(payload.image)
       if (quoted) {
         sent = await sock[phoneId].sendMessage(
           `${payload.to}@s.whatsapp.net`,
           {
-            image: Buffer.from(mediaResponse.data),
+            image: media,
             caption: payload.image.caption,
           },
           { quoted },
         )
       } else {
         sent = await sock[phoneId].sendMessage(to, {
-          image: Buffer.from(mediaResponse.data),
+          image: media,
           caption: payload.image.caption,
         })
       }
@@ -117,19 +237,13 @@ export async function postMessage(c: Context) {
       return c.json({ message: 'Failed to fetch media' }, 500)
     }
   } else if (payload.type == 'video') {
-    const mediaId = payload.video.id
     try {
-      const mediaUrlResponse = await axios.get(
-        `${MEDIA_BASE_URL}/${mediaId}/${mediaId}.json`,
-      )
-      const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
-        responseType: 'arraybuffer',
-      })
+      const media = await loadMedia(payload.video)
       if (quoted) {
         sent = await sock[phoneId].sendMessage(
           `${payload.to}@s.whatsapp.net`,
           {
-            video: Buffer.from(mediaResponse.data),
+            video: media,
             caption: payload.video.caption,
             gifPlayback: true,
           },
@@ -137,7 +251,7 @@ export async function postMessage(c: Context) {
         )
       } else {
         sent = await sock[phoneId].sendMessage(to, {
-          video: Buffer.from(mediaResponse.data),
+          video: media,
           caption: payload.video.caption,
           gifPlayback: true,
         })
@@ -147,19 +261,13 @@ export async function postMessage(c: Context) {
       return c.json({ message: 'Failed to fetch media' }, 500)
     }
   } else if (payload.type == 'document') {
-    const mediaId = payload.document.id
     try {
-      const mediaUrlResponse = await axios.get(
-        `${MEDIA_BASE_URL}/${mediaId}/${mediaId}.json`,
-      )
-      const mediaResponse = await axios.get(mediaUrlResponse.data.url, {
-        responseType: 'arraybuffer',
-      })
+      const media = await loadMedia(payload.document)
       if (quoted) {
         sent = await sock[phoneId].sendMessage(
           to,
           {
-            document: Buffer.from(mediaResponse.data),
+            document: media,
             caption: payload.document.caption,
             fileName: payload.document.filename,
           },
@@ -167,7 +275,7 @@ export async function postMessage(c: Context) {
         )
       } else {
         sent = await sock[phoneId].sendMessage(to, {
-          document: Buffer.from(mediaResponse.data),
+          document: media,
           caption: payload.document.caption,
           fileName: payload.document.filename,
         })

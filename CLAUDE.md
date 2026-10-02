@@ -27,7 +27,8 @@ The service starts an HTTP server on `PORT` (default 3000) and initializes WebSo
 - **File:** `route-handler.ts` + `hono.ts`
 - Handles message sending and media management
 - Routes:
-  - `POST /:phoneId/messages` — Send message (text/image/video/document)
+  - `POST /:phoneId/messages` — Send message (text/image/video/document), shows typing indicator first (`TYPING_*` env, `"typing": false` to skip)
+  - `POST /:phoneId/presence` — Send presence (`composing`/`recording`/`paused`/`available`/`unavailable`)
   - `POST /media` — Upload media file
   - `GET /media/:mediaId` — Fetch media metadata
 - Validates socket readiness before sending
